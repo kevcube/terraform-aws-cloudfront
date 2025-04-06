@@ -1,11 +1,5 @@
-locals {
-  create_origin_access_identity = var.create_origin_access_identity && length(keys(var.origin_access_identities)) > 0
-  create_origin_access_control  = var.create_origin_access_control && length(keys(var.origin_access_control)) > 0
-  create_vpc_origin             = var.create_vpc_origin && length(keys(var.vpc_origin)) > 0
-}
-
 resource "aws_cloudfront_origin_access_identity" "this" {
-  for_each = local.create_origin_access_identity ? var.origin_access_identities : {}
+  for_each = var.create_origin_access_identity ? var.origin_access_identities : []
 
   comment = each.value
 
@@ -15,25 +9,25 @@ resource "aws_cloudfront_origin_access_identity" "this" {
 }
 
 resource "aws_cloudfront_origin_access_control" "this" {
-  for_each = local.create_origin_access_control ? var.origin_access_control : {}
+  for_each = var.create_origin_access_control ? var.origin_access_control : {}
 
   name = each.key
 
-  description                       = each.value["description"]
-  origin_access_control_origin_type = each.value["origin_type"]
-  signing_behavior                  = each.value["signing_behavior"]
-  signing_protocol                  = each.value["signing_protocol"]
+  description                       = each.value.description
+  origin_access_control_origin_type = each.value.origin_type
+  signing_behavior                  = each.value.signing_behavior
+  signing_protocol                  = each.value.signing_protocol
 }
 
 resource "aws_cloudfront_vpc_origin" "this" {
-  for_each = local.create_vpc_origin ? var.vpc_origin : {}
+  for_each = var.create_vpc_origin ? var.vpc_origin : {}
 
   vpc_origin_endpoint_config {
-    name                   = each.value["name"]
-    arn                    = each.value["arn"]
-    http_port              = each.value["http_port"]
-    https_port             = each.value["https_port"]
-    origin_protocol_policy = each.value["origin_protocol_policy"]
+    name                   = each.key
+    arn                    = each.value.arn
+    http_port              = each.value.http_port
+    https_port             = each.value.https_port
+    origin_protocol_policy = each.value.origin_protocol_policy
 
     origin_ssl_protocols {
       items    = each.value.origin_ssl_protocols.items
@@ -47,22 +41,75 @@ resource "aws_cloudfront_vpc_origin" "this" {
 resource "aws_cloudfront_distribution" "this" {
   count = var.create_distribution ? 1 : 0
 
-  aliases                         = var.aliases
-  comment                         = var.comment
+  aliases = var.aliases
+  comment = var.comment
+
   continuous_deployment_policy_id = var.continuous_deployment_policy_id
-  default_root_object             = var.default_root_object
-  enabled                         = var.enabled
-  http_version                    = var.http_version
-  is_ipv6_enabled                 = var.is_ipv6_enabled
-  price_class                     = var.price_class
-  retain_on_delete                = var.retain_on_delete
-  staging                         = var.staging
-  wait_for_deployment             = var.wait_for_deployment
-  web_acl_id                      = var.web_acl_id
-  tags                            = var.tags
+
+  dynamic "custom_error_response" {
+    for_each = var.custom_error_responses
+
+    content {
+      error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
+      error_code            = custom_error_response.value.error_code
+      response_code         = custom_error_response.value.response_code
+      response_page_path    = custom_error_response.value.response_page_path
+    }
+  }
+
+  default_cache_behavior {
+    allowed_methods           = var.default_cache_behavior.allowed_methods
+    cached_methods            = var.default_cache_behavior.cached_methods
+    cache_policy_id           = var.default_cache_behavior.cache_policy_id
+    compress                  = var.default_cache_behavior.compress
+    default_ttl               = var.default_cache_behavior.default_ttl
+    field_level_encryption_id = var.default_cache_behavior.field_level_encryption_id
+
+    dynamic "lambda_function_association" {
+      for_each = var.default_cache_behavior.lambda_function_association
+
+      content {
+        event_type   = lambda_function_association.value.event_type
+        lambda_arn   = lambda_function_association.value.lambda_arn
+        include_body = lambda_function_association.value.include_body
+      }
+    }
+
+    dynamic "function_association" {
+      for_each = var.default_cache_behavior.function_association
+
+      content {
+        event_type   = function_association.value.event_type
+        function_arn = function_association.value.function_arn
+      }
+    }
+
+    max_ttl                    = var.default_cache_behavior.max_ttl
+    min_ttl                    = var.default_cache_behavior.min_ttl
+    origin_request_policy_id   = var.default_cache_behavior.origin_request_policy_id
+    realtime_log_config_arn    = var.default_cache_behavior.realtime_log_config_arn
+    response_headers_policy_id = var.default_cache_behavior.response_headers_policy_id
+    smooth_streaming           = var.default_cache_behavior.smooth_streaming
+    target_origin_id           = var.default_cache_behavior.target_origin_id
+    trusted_key_groups         = var.default_cache_behavior.trusted_key_groups
+    trusted_signers            = var.default_cache_behavior.trusted_signers
+    viewer_protocol_policy     = var.default_cache_behavior.viewer_protocol_policy
+
+    dynamic "grpc_config" {
+      for_each = compact([var.default_cache_behavior.grpc_config])
+      content {
+        enabled = grpc_config.value.enabled
+      }
+    }
+  }
+
+  default_root_object = var.default_root_object
+  enabled             = var.enabled
+  is_ipv6_enabled     = var.is_ipv6_enabled
+  http_version        = var.http_version
 
   dynamic "logging_config" {
-    for_each = length(keys(var.logging_config)) == 0 ? [] : [var.logging_config]
+    for_each = var.logging_config
 
     content {
       bucket          = logging_config.value["bucket"]
@@ -71,8 +118,16 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
+  price_class         = var.price_class
+  retain_on_delete    = var.retain_on_delete
+  staging             = var.staging
+  wait_for_deployment = var.wait_for_deployment
+  web_acl_id          = var.web_acl_id
+  tags                = var.tags
+
+
   dynamic "origin" {
-    for_each = var.origin
+    for_each = var.origins
 
     content {
       domain_name              = origin.value.domain_name
@@ -153,76 +208,7 @@ resource "aws_cloudfront_distribution" "this" {
     }
   }
 
-  dynamic "default_cache_behavior" {
-    for_each = [var.default_cache_behavior]
-    iterator = i
 
-    content {
-      target_origin_id       = i.value["target_origin_id"]
-      viewer_protocol_policy = i.value["viewer_protocol_policy"]
-
-      allowed_methods           = lookup(i.value, "allowed_methods", ["GET", "HEAD", "OPTIONS"])
-      cached_methods            = lookup(i.value, "cached_methods", ["GET", "HEAD"])
-      compress                  = lookup(i.value, "compress", null)
-      field_level_encryption_id = lookup(i.value, "field_level_encryption_id", null)
-      smooth_streaming          = lookup(i.value, "smooth_streaming", null)
-      trusted_signers           = lookup(i.value, "trusted_signers", null)
-      trusted_key_groups        = lookup(i.value, "trusted_key_groups", null)
-
-      cache_policy_id            = try(i.value.cache_policy_id, data.aws_cloudfront_cache_policy.this[i.value.cache_policy_name].id, null)
-      origin_request_policy_id   = try(i.value.origin_request_policy_id, data.aws_cloudfront_origin_request_policy.this[i.value.origin_request_policy_name].id, null)
-      response_headers_policy_id = try(i.value.response_headers_policy_id, data.aws_cloudfront_response_headers_policy.this[i.value.response_headers_policy_name].id, null)
-
-      realtime_log_config_arn = lookup(i.value, "realtime_log_config_arn", null)
-
-      min_ttl     = lookup(i.value, "min_ttl", null)
-      default_ttl = lookup(i.value, "default_ttl", null)
-      max_ttl     = lookup(i.value, "max_ttl", null)
-
-      dynamic "forwarded_values" {
-        for_each = lookup(i.value, "use_forwarded_values", true) ? [true] : []
-
-        content {
-          query_string            = lookup(i.value, "query_string", false)
-          query_string_cache_keys = lookup(i.value, "query_string_cache_keys", [])
-          headers                 = lookup(i.value, "headers", [])
-
-          cookies {
-            forward           = lookup(i.value, "cookies_forward", "none")
-            whitelisted_names = lookup(i.value, "cookies_whitelisted_names", null)
-          }
-        }
-      }
-
-      dynamic "lambda_function_association" {
-        for_each = lookup(i.value, "lambda_function_association", [])
-        iterator = l
-
-        content {
-          event_type   = l.key
-          lambda_arn   = l.value.lambda_arn
-          include_body = lookup(l.value, "include_body", null)
-        }
-      }
-
-      dynamic "function_association" {
-        for_each = lookup(i.value, "function_association", [])
-        iterator = f
-
-        content {
-          event_type   = f.key
-          function_arn = f.value.function_arn
-        }
-      }
-
-      dynamic "grpc_config" {
-        for_each = try([i.value.grpc_config], [])
-        content {
-          enabled = grpc_config.value.enabled
-        }
-      }
-    }
-  }
 
   dynamic "ordered_cache_behavior" {
     for_each = var.ordered_cache_behavior
@@ -305,17 +291,7 @@ resource "aws_cloudfront_distribution" "this" {
     ssl_support_method       = lookup(var.viewer_certificate, "ssl_support_method", null)
   }
 
-  dynamic "custom_error_response" {
-    for_each = length(flatten([var.custom_error_response])[0]) > 0 ? flatten([var.custom_error_response]) : []
 
-    content {
-      error_code = custom_error_response.value["error_code"]
-
-      response_code         = lookup(custom_error_response.value, "response_code", null)
-      response_page_path    = lookup(custom_error_response.value, "response_page_path", null)
-      error_caching_min_ttl = lookup(custom_error_response.value, "error_caching_min_ttl", null)
-    }
-  }
 
   restrictions {
     dynamic "geo_restriction" {

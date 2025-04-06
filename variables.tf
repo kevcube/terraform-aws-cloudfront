@@ -1,8 +1,4 @@
-variable "create_distribution" {
-  description = "Controls if CloudFront distribution should be created"
-  type        = bool
-  default     = true
-}
+# Origin Access Identities
 
 variable "create_origin_access_identity" {
   description = "Controls if CloudFront origin access identity should be created"
@@ -11,10 +7,12 @@ variable "create_origin_access_identity" {
 }
 
 variable "origin_access_identities" {
-  description = "Map of CloudFront origin access identities (value as a comment)"
-  type        = map(string)
-  default     = {}
+  description = "List of CloudFront origin access identities (value as a comment)"
+  type        = list(string)
+  default     = []
 }
+
+# Origin Access Controls
 
 variable "create_origin_access_control" {
   description = "Controls if CloudFront origin access control should be created"
@@ -25,7 +23,7 @@ variable "create_origin_access_control" {
 variable "origin_access_control" {
   description = "Map of CloudFront origin access control"
   type = map(object({
-    description      = string
+    description      = optional(string)
     origin_type      = string
     signing_behavior = string
     signing_protocol = string
@@ -33,12 +31,42 @@ variable "origin_access_control" {
 
   default = {
     s3 = {
-      description      = "",
       origin_type      = "s3",
       signing_behavior = "always",
       signing_protocol = "sigv4"
     }
   }
+}
+
+# VPC Origins
+
+variable "create_vpc_origin" {
+  description = "If enabled, the resource for VPC origin will be created."
+  type        = bool
+  default     = false
+}
+
+variable "vpc_origin" {
+  description = "Map of CloudFront VPC origin name to configuration"
+  type = map(object({
+    arn                    = string
+    http_port              = number
+    https_port             = number
+    origin_protocol_policy = string
+    origin_ssl_protocols = object({
+      items    = list(string)
+      quantity = number
+    })
+  }))
+  default = {}
+}
+
+# Distribution
+
+variable "create_distribution" {
+  description = "Controls if CloudFront distribution should be created"
+  type        = bool
+  default     = true
 }
 
 variable "aliases" {
@@ -59,6 +87,52 @@ variable "continuous_deployment_policy_id" {
   default     = null
 }
 
+variable "custom_error_responses" {
+  description = "One or more custom error response elements"
+  type = list(object({
+    error_caching_min_ttl = optional(number)
+    error_code            = number
+    response_code         = optional(number)
+    response_page_path    = optional(string)
+  }))
+  default = []
+}
+
+variable "default_cache_behavior" {
+  description = "The default cache behavior for this distribution"
+  type = object({
+    allowed_methods           = list(string)
+    cached_methods            = list(string)
+    cache_policy_id           = optional(string)
+    compress                  = optional(bool)
+    default_ttl               = optional(number)
+    field_level_encryption_id = optional(string)
+    lambda_function_associations = optional(list(object({
+      event_type   = string
+      lambda_arn   = string
+      include_body = optional(bool)
+    })), [])
+    function_associations = optional(list(object({
+      event_type   = string
+      function_arn = string
+    })), [])
+    max_ttl                    = optional(number)
+    min_ttl                    = optional(number)
+    origin_request_policy_id   = optional(string)
+    realtime_log_config_arn    = optional(string)
+    response_headers_policy_id = optional(string)
+    smooth_streaming           = optional(bool)
+    target_origin_id           = string
+    trusted_key_groups         = optional(list(string))
+    trusted_signers            = optional(list(string))
+    viewer_protocol_policy     = string
+    grpc_config = optional(object({
+      enabled = bool
+    }))
+  })
+  default = null
+}
+
 variable "default_root_object" {
   description = "The object that you want CloudFront to return (for example, index.html) when an end user requests the root URL."
   type        = string
@@ -71,16 +145,115 @@ variable "enabled" {
   default     = true
 }
 
-variable "http_version" {
-  description = "The maximum HTTP version to support on the distribution. Allowed values are http1.1, http2, http2and3, and http3. The default is http2."
-  type        = string
-  default     = "http2"
-}
-
 variable "is_ipv6_enabled" {
   description = "Whether the IPv6 is enabled for the distribution."
   type        = bool
   default     = null
+}
+
+variable "http_version" {
+  description = "The maximum HTTP version to support on the distribution. Allowed values are http1.1, http2, http2and3, and http3. The default is http2."
+  type        = string
+  default     = null
+}
+
+variable "logging_config" {
+  description = "The logging configuration that controls how logs are written to your distribution (maximum one)."
+  type = object({
+    bucket          = string
+    prefix          = optional(string)
+    include_cookies = optional(bool)
+  })
+  default = {}
+}
+
+variable "ordered_cache_behavior" {
+  description = "An ordered list of cache behaviors resource for this distribution. List from top to bottom in order of precedence. The topmost cache behavior will have precedence 0."
+  type = list(object({
+    allowed_methods           = list(string)
+    cached_methods            = list(string)
+    cache_policy_id           = optional(string)
+    compress                  = optional(bool)
+    default_ttl               = optional(number)
+    field_level_encryption_id = optional(string)
+    lambda_function_associations = optional(list(object({
+      event_type   = string
+      lambda_arn   = string
+      include_body = optional(bool)
+    })), [])
+    function_associations = optional(list(object({
+      event_type   = string
+      function_arn = string
+    })), [])
+    max_ttl                    = optional(number)
+    min_ttl                    = optional(number)
+    origin_request_policy_id   = optional(string)
+    realtime_log_config_arn    = optional(string)
+    response_headers_policy_id = optional(string)
+    smooth_streaming           = optional(bool)
+    target_origin_id           = string
+    trusted_key_groups         = optional(list(string))
+    trusted_signers            = optional(list(string))
+    viewer_protocol_policy     = string
+    grpc_config = optional(object({
+      enabled = bool
+    }))
+  }))
+  default = []
+}
+
+variable "origins" {
+  description = "One or more origins for this distribution (multiples allowed)."
+  type = list(object({
+    connection_attempts = optional(number)
+    connection_timeout  = optional(number)
+    custom_origin_config = optional(object({
+      http_port              = number
+      https_port             = number
+      origin_protocol_policy = string
+      origin_ssl_protocols = object({
+        items    = list(string)
+        quantity = number
+      })
+      origin_keepalive_timeout = optional(number)
+      origin_read_timeout      = optional(number)
+    }))
+    domain_name = string
+    custom_headers = optional(list(object({
+      name  = string
+      value = string
+    })))
+    origin_access_control_id = optional(string)
+    origin_id                = string
+    origin_path              = optional(string)
+    origin_shield = optional(object({
+      enabled              = bool
+      origin_shield_region = optional(string)
+    }))
+    s3_origin_config = optional(object({
+      origin_access_identity = optional(string)
+    }))
+    vpc_origin_config = optional(object({
+      origin_keepalive_timeout = optional(number)
+      origin_read_timeout      = optional(number)
+      vpc_origin_id            = string
+    }))
+  }))
+  default = []
+}
+
+variable "origin_group" {
+  description = "One or more origin_group for this distribution (multiples allowed)."
+  type        = any
+  default = object({
+    origin_id = string
+    failover_criteria = object({
+      status_codes = list(number)
+    })
+    members = list(object({
+      origin_id = string
+    }))
+  })
 }
 
 variable "price_class" {
@@ -89,28 +262,22 @@ variable "price_class" {
   default     = null
 }
 
-variable "retain_on_delete" {
-  description = "Disables the distribution instead of deleting it when destroying the resource through Terraform. If this is set, the distribution needs to be deleted manually afterwards."
-  type        = bool
-  default     = false
-}
-
-variable "wait_for_deployment" {
-  description = "If enabled, the resource will wait for the distribution status to change from InProgress to Deployed. Setting this to false will skip the process."
-  type        = bool
-  default     = true
-}
-
-variable "web_acl_id" {
-  description = "If you're using AWS WAF to filter CloudFront requests, the Id of the AWS WAF web ACL that is associated with the distribution. The WAF Web ACL must exist in the WAF Global (CloudFront) region and the credentials configuring this argument must have waf:GetWebACL permissions assigned. If using WAFv2, provide the ARN of the web ACL."
-  type        = string
-  default     = null
+variable "geo_restriction" {
+  description = "The restriction configuration for this distribution (geo_restrictions)"
+  type = object({
+    locations        = list(string)
+    restriction_type = string
+  })
+  default = {
+    restriction_type = "none"
+    locations        = []
+  }
 }
 
 variable "staging" {
   description = "Whether the distribution is a staging distribution."
   type        = bool
-  default     = false
+  default     = null
 }
 
 variable "tags" {
@@ -119,55 +286,37 @@ variable "tags" {
   default     = null
 }
 
-variable "origin" {
-  description = "One or more origins for this distribution (multiples allowed)."
-  type        = any
-  default     = null
-}
-
-variable "origin_group" {
-  description = "One or more origin_group for this distribution (multiples allowed)."
-  type        = any
-  default     = {}
-}
-
 variable "viewer_certificate" {
   description = "The SSL configuration for this distribution"
-  type        = any
+  type = object({
+    acm_certificate_arn            = optional(string)
+    cloudfront_default_certificate = optional(bool)
+    iam_certificate_id             = optional(string)
+    minimum_protocol_version       = optional(string)
+    ssl_support_method             = optional(string)
+  })
   default = {
     cloudfront_default_certificate = true
     minimum_protocol_version       = "TLSv1"
   }
 }
 
-variable "geo_restriction" {
-  description = "The restriction configuration for this distribution (geo_restrictions)"
-  type        = any
-  default     = {}
-}
-
-variable "logging_config" {
-  description = "The logging configuration that controls how logs are written to your distribution (maximum one)."
-  type        = any
-  default     = {}
-}
-
-variable "custom_error_response" {
-  description = "One or more custom error response elements"
-  type        = any
-  default     = {}
-}
-
-variable "default_cache_behavior" {
-  description = "The default cache behavior for this distribution"
-  type        = any
+variable "web_acl_id" {
+  description = "If you're using AWS WAF to filter CloudFront requests, the Id of the AWS WAF web ACL that is associated with the distribution. The WAF Web ACL must exist in the WAF Global (CloudFront) region and the credentials configuring this argument must have waf:GetWebACL permissions assigned. If using WAFv2, provide the ARN of the web ACL."
+  type        = string
   default     = null
 }
 
-variable "ordered_cache_behavior" {
-  description = "An ordered list of cache behaviors resource for this distribution. List from top to bottom in order of precedence. The topmost cache behavior will have precedence 0."
-  type        = any
-  default     = []
+variable "retain_on_delete" {
+  description = "Disables the distribution instead of deleting it when destroying the resource through Terraform. If this is set, the distribution needs to be deleted manually afterwards."
+  type        = bool
+  default     = null
+}
+
+variable "wait_for_deployment" {
+  description = "If enabled, the resource will wait for the distribution status to change from InProgress to Deployed. Setting this to false will skip the process."
+  type        = bool
+  default     = null
 }
 
 variable "create_monitoring_subscription" {
@@ -180,26 +329,4 @@ variable "realtime_metrics_subscription_status" {
   description = "A flag that indicates whether additional CloudWatch metrics are enabled for a given CloudFront distribution. Valid values are `Enabled` and `Disabled`."
   type        = string
   default     = "Enabled"
-}
-
-variable "create_vpc_origin" {
-  description = "If enabled, the resource for VPC origin will be created."
-  type        = bool
-  default     = false
-}
-
-variable "vpc_origin" {
-  description = "Map of CloudFront VPC origin"
-  type = map(object({
-    name                   = string
-    arn                    = string
-    http_port              = number
-    https_port             = number
-    origin_protocol_policy = string
-    origin_ssl_protocols = object({
-      items    = list(string)
-      quantity = number
-    })
-  }))
-  default = {}
 }
