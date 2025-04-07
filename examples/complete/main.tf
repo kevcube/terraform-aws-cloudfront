@@ -11,7 +11,7 @@ provider "aws" {
 }
 
 locals {
-  domain_name = "terraform-aws-modules.modules.tf" # trimsuffix(data.aws_route53_zone.this.name, ".")
+  domain_name = "icecube.dog" # trimsuffix(data.aws_route53_zone.this.name, ".")
   subdomain   = "cdn"
 }
 
@@ -38,7 +38,6 @@ module "cloudfront" {
   # This rate is charged only once per month, per metric (up to 8 metrics per distribution).
   create_monitoring_subscription = true
 
-  create_origin_access_identity = true
   origin_access_identities = {
     s3_bucket_one = "My awesome CloudFront can access"
   }
@@ -73,63 +72,84 @@ module "cloudfront" {
     prefix = "cloudfront"
   }
 
-  origin = {
+  origins = {
     appsync = {
-      domain_name = "appsync.${local.domain_name}"
       custom_origin_config = {
         http_port              = 80
         https_port             = 443
         origin_protocol_policy = "match-viewer"
         origin_ssl_protocols   = ["TLSv1", "TLSv1.1", "TLSv1.2"]
       }
-
-      custom_header = [
-        {
-          name  = "X-Forwarded-Scheme"
-          value = "https"
-        },
-        {
-          name  = "X-Frame-Options"
-          value = "SAMEORIGIN"
-        }
-      ]
-
+      domain_name = "appsync.${local.domain_name}"
+      custom_headers = [{
+        name  = "X-Forwarded-Scheme"
+        value = "https"
+        }, {
+        name  = "X-Frame-Options"
+        value = "SAMEORIGIN"
+      }]
       origin_shield = {
         enabled              = true
         origin_shield_region = "us-east-1"
       }
-    }
-
+    },
     s3_one = { # with origin access identity (legacy)
       domain_name = module.s3_one.s3_bucket_bucket_regional_domain_name
       s3_origin_config = {
         origin_access_identity = "s3_bucket_one" # key in `origin_access_identities`
-        # cloudfront_access_identity_path = "origin-access-identity/cloudfront/E5IGQAA1QO48Z" # external OAI resource
       }
-    }
-
+    },
     s3_oac = { # with origin access control settings (recommended)
-      domain_name           = module.s3_one.s3_bucket_bucket_regional_domain_name
-      origin_access_control = "s3_oac" # key in `origin_access_control`
-      #      origin_access_control_id = "E345SXM82MIOSU" # external OAС resource
-    }
-
-    ec2_vpc_origin = {
+      domain_name              = module.s3_one.s3_bucket_bucket_regional_domain_name
+      origin_access_control_id = "s3_oac" # key in `origin_access_control`
+      # origin_access_control_id = "E345SXM82MIOSU" # external OAС resource
+    },
+    ec2_vpc_origin = { # with VPC origin settings
       domain_name = module.ec2.private_dns
       vpc_origin_config = {
-        vpc_origin = "ec2_vpc_origin" # key in `vpc_origin`
-        #  vpc_origin_id  = "vo_Cg6A14otX0DB1yyDQ6Nond" # external VPC Origin resource
+        origin_keepalive_timeout = 5
+        origin_read_timeout      = 30
+        vpc_origin_id            = "ec2_vpc_origin" # key in `vpc_origin`
+        # vpc_origin_id  = "vo_Cg6A14otX0DB1yyDQ6Nond" # external VPC Origin resource
       }
     }
   }
 
-  origin_group = {
-    group_one = {
-      failover_status_codes      = [403, 404, 500, 502]
-      primary_member_origin_id   = "appsync"
-      secondary_member_origin_id = "s3_one"
+  # origins = {
+  #   s3_one = { # with origin access identity (legacy)
+  #     domain_name = module.s3_one.s3_bucket_bucket_regional_domain_name
+  #     s3_origin_config = {
+  #       origin_access_identity = "s3_bucket_one" # key in `origin_access_identities`
+  #       # cloudfront_access_identity_path = "origin-access-identity/cloudfront/E5IGQAA1QO48Z" # external OAI resource
+  #     }
+  #   }
+
+  #   s3_oac = { # with origin access control settings (recommended)
+  #     domain_name           = module.s3_one.s3_bucket_bucket_regional_domain_name
+  #     origin_access_control = "s3_oac" # key in `origin_access_control`
+  #     #      origin_access_control_id = "E345SXM82MIOSU" # external OAС resource
+  #   }
+
+  #   ec2_vpc_origin = {
+  #     domain_name = module.ec2.private_dns
+  #     vpc_origin_config = {
+  #       vpc_origin = "ec2_vpc_origin" # key in `vpc_origin`
+  #       #  vpc_origin_id  = "vo_Cg6A14otX0DB1yyDQ6Nond" # external VPC Origin resource
+  #     }
+  #   }
+  # }
+
+  origin_group = [{
+    origin_id = "group_one"
+    failover_criteria = {
+      status_codes = [403, 404, 500, 502]
     }
-  }
+    members = [{
+      origin_id = "appsync"
+      }, {
+      origin_id = "s3_one"
+    }]
+  }]
 
   default_cache_behavior = {
     target_origin_id       = "appsync"
@@ -142,7 +162,7 @@ module "cloudfront" {
     cache_policy_id            = "b2884449-e4de-46a7-ac36-70bc7f1ddd6d"
     response_headers_policy_id = "67f7725c-6f97-4210-82d7-5512b31e9d03"
 
-    lambda_function_association = {
+    lambda_function_associations = {
 
       # Valid keys: viewer-request, origin-request, viewer-response, origin-response
       viewer-request = {
@@ -171,7 +191,7 @@ module "cloudfront" {
       origin_request_policy_name   = "Managed-UserAgentRefererHeaders"
       response_headers_policy_name = "Managed-SimpleCORS"
 
-      function_association = {
+      function_associations = {
         # Valid keys: viewer-request, viewer-response
         viewer-request = {
           function_arn = aws_cloudfront_function.example.arn
@@ -210,21 +230,22 @@ module "cloudfront" {
     ssl_support_method  = "sni-only"
   }
 
-  custom_error_response = [{
-    error_code         = 404
-    response_code      = 404
-    response_page_path = "/errors/404.html"
-    }, {
-    error_code         = 403
-    response_code      = 403
-    response_page_path = "/errors/403.html"
-  }]
+  custom_error_responses = {
+    404 = {
+      error_caching_min_ttl = 300
+      response_code         = 404
+      response_page_path    = "/errors/404.html"
+    },
+    403 = {
+      response_code      = 403
+      response_page_path = "/errors/403.html"
+    }
+  }
 
   geo_restriction = {
     restriction_type = "whitelist"
     locations        = ["NO", "UA", "US", "GB"]
   }
-
 }
 
 ######

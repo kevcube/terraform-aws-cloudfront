@@ -1,15 +1,9 @@
 # Origin Access Identities
 
-variable "create_origin_access_identity" {
-  description = "Controls if CloudFront origin access identity should be created"
-  type        = bool
-  default     = false
-}
-
 variable "origin_access_identities" {
   description = "List of CloudFront origin access identities (value as a comment)"
-  type        = list(string)
-  default     = []
+  type        = map(string)
+  default     = {}
 }
 
 # Origin Access Controls
@@ -89,13 +83,13 @@ variable "continuous_deployment_policy_id" {
 
 variable "custom_error_responses" {
   description = "One or more custom error response elements"
-  type = list(object({
+  type = map(object({
     error_caching_min_ttl = optional(number)
-    error_code            = number
-    response_code         = optional(number)
-    response_page_path    = optional(string)
+    # error_code            = number # specified as map key
+    response_code      = optional(number)
+    response_page_path = optional(string)
   }))
-  default = []
+  default = {}
 }
 
 variable "default_cache_behavior" {
@@ -107,15 +101,13 @@ variable "default_cache_behavior" {
     compress                  = optional(bool)
     default_ttl               = optional(number)
     field_level_encryption_id = optional(string)
-    lambda_function_associations = optional(list(object({
-      event_type   = string
+    lambda_function_associations = optional(map(object({
       lambda_arn   = string
       include_body = optional(bool)
-    })), [])
-    function_associations = optional(list(object({
-      event_type   = string
+    })), {})
+    function_associations = optional(map(object({
       function_arn = string
-    })), [])
+    })), {})
     max_ttl                    = optional(number)
     min_ttl                    = optional(number)
     origin_request_policy_id   = optional(string)
@@ -176,18 +168,17 @@ variable "ordered_cache_behavior" {
     compress                  = optional(bool)
     default_ttl               = optional(number)
     field_level_encryption_id = optional(string)
-    lambda_function_associations = optional(list(object({
-      event_type   = string
+    lambda_function_associations = optional(map(object({
       lambda_arn   = string
       include_body = optional(bool)
-    })), [])
-    function_associations = optional(list(object({
-      event_type   = string
+    })), {})
+    function_associations = optional(map(object({
       function_arn = string
-    })), [])
+    })), {})
     max_ttl                    = optional(number)
     min_ttl                    = optional(number)
     origin_request_policy_id   = optional(string)
+    path_pattern               = string
     realtime_log_config_arn    = optional(string)
     response_headers_policy_id = optional(string)
     smooth_streaming           = optional(bool)
@@ -204,7 +195,7 @@ variable "ordered_cache_behavior" {
 
 variable "origins" {
   description = "One or more origins for this distribution (multiples allowed)."
-  type = list(object({
+  type = map(object({
     connection_attempts = optional(number)
     connection_timeout  = optional(number)
     custom_origin_config = optional(object({
@@ -219,10 +210,10 @@ variable "origins" {
     custom_headers = optional(list(object({
       name  = string
       value = string
-    })))
+    })), [])
     origin_access_control_id = optional(string)
-    origin_id                = string
-    origin_path              = optional(string)
+    # origin_id                = string # specified as map key
+    origin_path = optional(string)
     origin_shield = optional(object({
       enabled              = bool
       origin_shield_region = optional(string)
@@ -236,7 +227,7 @@ variable "origins" {
       vpc_origin_id            = string
     }))
   }))
-  default = []
+  default = {}
 }
 
 variable "origin_group" {
@@ -251,6 +242,10 @@ variable "origin_group" {
     }))
   }))
   default = []
+  validation {
+    condition     = alltrue([for group in var.origin_group : length(group.members) == 2])
+    error_message = "Each origin_group must have exactly 2 members"
+  }
 }
 
 variable "price_class" {

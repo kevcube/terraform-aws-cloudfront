@@ -1,5 +1,5 @@
 resource "aws_cloudfront_origin_access_identity" "this" {
-  for_each = var.create_origin_access_identity ? toset(var.origin_access_identities) : []
+  for_each = var.origin_access_identities
 
   comment = each.value
 
@@ -51,7 +51,7 @@ resource "aws_cloudfront_distribution" "this" {
 
     content {
       error_caching_min_ttl = custom_error_response.value.error_caching_min_ttl
-      error_code            = custom_error_response.value.error_code
+      error_code            = custom_error_response.key
       response_code         = custom_error_response.value.response_code
       response_page_path    = custom_error_response.value.response_page_path
     }
@@ -69,7 +69,7 @@ resource "aws_cloudfront_distribution" "this" {
       for_each = var.default_cache_behavior.lambda_function_associations
 
       content {
-        event_type   = lambda_function_association.value.event_type
+        event_type   = lambda_function_association.key
         lambda_arn   = lambda_function_association.value.lambda_arn
         include_body = lambda_function_association.value.include_body
       }
@@ -79,7 +79,7 @@ resource "aws_cloudfront_distribution" "this" {
       for_each = var.default_cache_behavior.function_associations
 
       content {
-        event_type   = function_association.value.event_type
+        event_type   = function_association.key
         function_arn = function_association.value.function_arn
       }
     }
@@ -109,7 +109,7 @@ resource "aws_cloudfront_distribution" "this" {
   http_version        = var.http_version
 
   dynamic "logging_config" {
-    for_each = coalesce(var.logging_config, {})
+    for_each = var.logging_config != null ? [var.logging_config] : []
 
     content {
       bucket          = logging_config.value.bucket
@@ -130,20 +130,20 @@ resource "aws_cloudfront_distribution" "this" {
       field_level_encryption_id = ordered_cache_behavior.value.field_level_encryption_id
 
       dynamic "lambda_function_association" {
-        for_each = ordered_cache_behavior.value.lambda_function_association
+        for_each = ordered_cache_behavior.value.lambda_function_associations
 
         content {
-          event_type   = lambda_function_association.value.event_type
+          event_type   = lambda_function_association.key
           lambda_arn   = lambda_function_association.value.lambda_arn
           include_body = lambda_function_association.value.include_body
         }
       }
 
       dynamic "function_association" {
-        for_each = ordered_cache_behavior.value.function_association
+        for_each = ordered_cache_behavior.value.function_associations
 
         content {
-          event_type   = function_association.value.event_type
+          event_type   = function_association.key
           function_arn = function_association.value.function_arn
         }
       }
@@ -177,7 +177,7 @@ resource "aws_cloudfront_distribution" "this" {
       connection_timeout  = origin.value.connection_timeout
 
       dynamic "custom_origin_config" {
-        for_each = coalesce(origin.value.custom_origin_config, {})
+        for_each = origin.value.custom_origin_config != null ? [origin.value.custom_origin_config] : []
 
         content {
           http_port                = custom_origin_config.value.http_port
@@ -192,7 +192,7 @@ resource "aws_cloudfront_distribution" "this" {
       domain_name = origin.value.domain_name
 
       dynamic "custom_header" {
-        for_each = compact([origin.value.custom_headers])
+        for_each = origin.value.custom_headers
 
         content {
           name  = custom_header.value.name
@@ -200,12 +200,16 @@ resource "aws_cloudfront_distribution" "this" {
         }
       }
 
-      origin_access_control_id = origin.value.origin_access_control_id
-      origin_id                = origin.value.origin_id
-      origin_path              = origin.value.origin_path
+      origin_access_control_id = try(
+        aws_cloudfront_origin_access_control.this[origin.value.origin_access_control_id].id,
+        origin.value.origin_access_control_id
+      )
+
+      origin_id   = origin.key
+      origin_path = origin.value.origin_path
 
       dynamic "origin_shield" {
-        for_each = compact([origin.value.origin_shield])
+        for_each = origin.value.origin_shield != null ? [origin.value.origin_shield] : []
 
         content {
           enabled              = origin_shield.value.enabled
@@ -214,20 +218,26 @@ resource "aws_cloudfront_distribution" "this" {
       }
 
       dynamic "s3_origin_config" {
-        for_each = compact([origin.value.s3_origin_config])
+        for_each = origin.value.s3_origin_config != null ? [origin.value.s3_origin_config] : []
 
         content {
-          origin_access_identity = origin.value.origin_access_identity
+          origin_access_identity = try(
+            aws_cloudfront_origin_access_identity.this[s3_origin_config.value.origin_access_identity].id,
+            s3_origin_config.value.origin_access_identity
+          )
         }
       }
 
       dynamic "vpc_origin_config" {
-        for_each = compact([origin.value.vpc_origin_config])
+        for_each = origin.value.vpc_origin_config != null ? [origin.value.vpc_origin_config] : []
 
         content {
-          origin_keepalive_timeout = origin.value.origin_keepalive_timeout
-          origin_read_timeout      = origin.value.origin_read_timeout
-          vpc_origin_id            = origin.value.vpc_origin_id
+          origin_keepalive_timeout = vpc_origin_config.value.origin_keepalive_timeout
+          origin_read_timeout      = vpc_origin_config.value.origin_read_timeout
+          vpc_origin_id = try(
+            aws_cloudfront_vpc_origin.this[vpc_origin_config.value.vpc_origin_id].id,
+            vpc_origin_config.value.vpc_origin_id
+          )
         }
       }
     }
@@ -240,15 +250,15 @@ resource "aws_cloudfront_distribution" "this" {
       origin_id = origin_group.value.origin_id
 
       failover_criteria {
-        status_codes = origin_group.value.failover_status_codes
+        status_codes = origin_group.value.failover_criteria.status_codes
       }
 
-      member {
-        origin_id = origin_group.value.primary_member_origin_id
-      }
+      dynamic "member" {
+        for_each = origin_group.value.members
 
-      member {
-        origin_id = origin_group.value.secondary_member_origin_id
+        content {
+          origin_id = member.value.origin_id
+        }
       }
     }
   }
