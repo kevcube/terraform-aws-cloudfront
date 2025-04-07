@@ -50,17 +50,17 @@ output "cloudfront_distribution_hosted_zone_id" {
 
 output "cloudfront_origin_access_identities" {
   description = "The origin access identities created"
-  value       = { for k, v in aws_cloudfront_origin_access_identity.this : k => v if local.create_origin_access_identity }
+  value       = { for k, v in aws_cloudfront_origin_access_identity.this : k => v if var.create_origin_access_identity }
 }
 
 output "cloudfront_origin_access_identity_ids" {
   description = "The IDS of the origin access identities created"
-  value       = [for v in aws_cloudfront_origin_access_identity.this : v.id if local.create_origin_access_identity]
+  value       = [for v in aws_cloudfront_origin_access_identity.this : v.id if var.create_origin_access_identity]
 }
 
 output "cloudfront_origin_access_identity_iam_arns" {
   description = "The IAM arns of the origin access identities created"
-  value       = [for v in aws_cloudfront_origin_access_identity.this : v.iam_arn if local.create_origin_access_identity]
+  value       = [for v in aws_cloudfront_origin_access_identity.this : v.iam_arn if var.create_origin_access_identity]
 }
 
 output "cloudfront_monitoring_subscription_id" {
@@ -75,15 +75,15 @@ output "cloudfront_distribution_tags" {
 
 output "cloudfront_origin_access_controls" {
   description = "The origin access controls created"
-  value       = local.create_origin_access_control ? { for k, v in aws_cloudfront_origin_access_control.this : k => v } : {}
+  value       = var.create_origin_access_control ? { for k, v in aws_cloudfront_origin_access_control.this : k => v } : {}
 }
 
 output "cloudfront_origin_access_controls_ids" {
   description = "The IDS of the origin access identities created"
-  value       = local.create_origin_access_control ? [for v in aws_cloudfront_origin_access_control.this : v.id] : []
+  value       = var.create_origin_access_control ? [for v in aws_cloudfront_origin_access_control.this : v.id] : []
 }
 
 output "cloudfront_vpc_origin_ids" {
   description = "The IDS of the VPC origin created"
-  value       = local.create_vpc_origin ? [for v in aws_cloudfront_vpc_origin.this : v.id] : []
+  value       = var.create_vpc_origin ? [for v in aws_cloudfront_vpc_origin.this : v.id] : []
 }

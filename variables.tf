@@ -164,7 +164,7 @@ variable "logging_config" {
     prefix          = optional(string)
     include_cookies = optional(bool)
   })
-  default = {}
+  default = null
 }
 
 variable "ordered_cache_behavior" {
@@ -208,13 +208,10 @@ variable "origins" {
     connection_attempts = optional(number)
     connection_timeout  = optional(number)
     custom_origin_config = optional(object({
-      http_port              = number
-      https_port             = number
-      origin_protocol_policy = string
-      origin_ssl_protocols = object({
-        items    = list(string)
-        quantity = number
-      })
+      http_port                = number
+      https_port               = number
+      origin_protocol_policy   = string
+      origin_ssl_protocols     = list(string)
       origin_keepalive_timeout = optional(number)
       origin_read_timeout      = optional(number)
     }))
@@ -244,8 +241,7 @@ variable "origins" {
 
 variable "origin_group" {
   description = "One or more origin_group for this distribution (multiples allowed)."
-  type        = any
-  default = object({
+  type = list(object({
     origin_id = string
     failover_criteria = object({
       status_codes = list(number)
@@ -253,7 +249,8 @@ variable "origin_group" {
     members = list(object({
       origin_id = string
     }))
-  })
+  }))
+  default = []
 }
 
 variable "price_class" {
